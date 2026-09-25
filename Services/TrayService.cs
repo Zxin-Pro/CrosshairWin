@@ -1,8 +1,20 @@
+// System.Drawing and System.Windows.Media both define Color, Pen and Brush, so the
+// GDI+ (tray icon) and WPF (context menu) usages need explicit aliases.
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using Hardcodet.Wpf.TaskbarNotification;
+using GdiColor = System.Drawing.Color;
+using GdiPen = System.Drawing.Pen;
+using WpfColor = System.Windows.Media.Color;
+using WpfCursors = System.Windows.Input.Cursors;
+using WpfGridLength = System.Windows.GridLength;
+using WpfGridUnitType = System.Windows.GridUnitType;
+using WpfSolidColorBrush = System.Windows.Media.SolidColorBrush;
 
 namespace CrosshairWin.Services;
 
@@ -45,41 +57,90 @@ internal sealed class TrayService : IDisposable
 
         _icon.TrayMouseDoubleClick += (_, _) => OpenSettingsRequested?.Invoke();
 
-        var menu = new System.Windows.Controls.ContextMenu();
+        var menu = new ContextMenu
+        {
+            // Match the settings window's dark theme so the app looks consistent.
+            Background = new WpfSolidColorBrush(WpfColor.FromRgb(0x1C, 0x1F, 0x25)),
+            Foreground = new WpfSolidColorBrush(WpfColor.FromRgb(0xE6, 0xE8, 0xEC)),
+            BorderBrush = new WpfSolidColorBrush(WpfColor.FromRgb(0x34, 0x39, 0x46)),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4),
+            FontFamily = new System.Windows.Media.FontFamily("Microsoft YaHei UI, Segoe UI"),
+            FontSize = 13
+        };
 
-        var toggle = new System.Windows.Controls.MenuItem { Header = "显示/隐藏准星" };
-        toggle.Click += (_, _) => ToggleVisibilityRequested?.Invoke();
-        menu.Items.Add(toggle);
+        menu.Items.Add(CreateMenuItem("显示/隐藏准星", "F8", () => ToggleVisibilityRequested?.Invoke()));
+        menu.Items.Add(CreateMenuItem("切换准星样式", "F9", () => CyclePresetRequested?.Invoke()));
+        menu.Items.Add(CreateMenuItem("设置...", "F10", () => OpenSettingsRequested?.Invoke()));
+        menu.Items.Add(CreateSeparator());
 
-        var cycle = new System.Windows.Controls.MenuItem { Header = "切换准星样式" };
-        cycle.Click += (_, _) => CyclePresetRequested?.Invoke();
-        menu.Items.Add(cycle);
-
-        var settings = new System.Windows.Controls.MenuItem { Header = "设置..." };
-        settings.Click += (_, _) => OpenSettingsRequested?.Invoke();
-        menu.Items.Add(settings);
-
-        menu.Items.Add(new System.Windows.Controls.Separator());
-
-        var autoStart = new System.Windows.Controls.MenuItem
+        var autoStart = new MenuItem
         {
             Header = "开机自动启动",
             IsCheckable = true,
-            IsChecked = startWithWindows
+            IsChecked = startWithWindows,
+            Padding = new Thickness(10, 7, 10, 7),
+            Cursor = WpfCursors.Hand,
+            Foreground = new WpfSolidColorBrush(WpfColor.FromRgb(0xE6, 0xE8, 0xEC))
         };
         autoStart.Click += (_, _) => AutoStartToggled?.Invoke(autoStart.IsChecked);
         menu.Items.Add(autoStart);
 
-        menu.Items.Add(new System.Windows.Controls.Separator());
-
-        var exit = new System.Windows.Controls.MenuItem { Header = "退出" };
-        exit.Click += (_, _) => ExitRequested?.Invoke();
-        menu.Items.Add(exit);
+        menu.Items.Add(CreateSeparator());
+        menu.Items.Add(CreateMenuItem("退出", "Ctrl+Alt+Q", () => ExitRequested?.Invoke()));
 
         _icon.ContextMenu = menu;
 
         return _icon;
     }
+
+    /// <summary>Builds a themed menu item with a right-aligned, dimmed shortcut hint.</summary>
+    private static MenuItem CreateMenuItem(string header, string shortcut, Action onClick)
+    {
+        // A Grid header lets the shortcut hint sit right-aligned without a fixed width.
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new WpfGridLength(1, WpfGridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = WpfGridLength.Auto });
+
+        var label = new TextBlock
+        {
+            Text = header,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(label, 0);
+
+        var hint = new TextBlock
+        {
+            Text = shortcut,
+            FontSize = 11.5,
+            Margin = new Thickness(24, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = new WpfSolidColorBrush(WpfColor.FromRgb(0x6B, 0x72, 0x80))
+        };
+        Grid.SetColumn(hint, 1);
+
+        grid.Children.Add(label);
+        grid.Children.Add(hint);
+
+        var item = new MenuItem
+        {
+            Header = grid,
+            Padding = new Thickness(10, 7, 10, 7),
+            Cursor = WpfCursors.Hand,
+            Foreground = new WpfSolidColorBrush(WpfColor.FromRgb(0xE6, 0xE8, 0xEC))
+        };
+
+        item.Click += (_, _) => onClick();
+        return item;
+    }
+
+    /// <summary>A themed separator that is visible against the dark menu background.</summary>
+    private static Separator CreateSeparator()
+        => new()
+        {
+            Background = new WpfSolidColorBrush(WpfColor.FromRgb(0x34, 0x39, 0x46)),
+            Margin = new Thickness(6, 4, 6, 4)
+        };
 
     /// <summary>Synchronises the autostart checkmark with the real registry state.</summary>
     public void UpdateAutoStartState(bool enabled)
@@ -125,9 +186,9 @@ internal sealed class TrayService : IDisposable
         using (var g = Graphics.FromImage(bitmap))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(Color.Transparent);
+            g.Clear(GdiColor.Transparent);
 
-            using var pen = new Pen(Color.FromArgb(255, 255, 59, 48), 3f)
+            using var pen = new GdiPen(GdiColor.FromArgb(255, 255, 59, 48), 3f)
             {
                 StartCap = LineCap.Round,
                 EndCap = LineCap.Round
@@ -139,7 +200,7 @@ internal sealed class TrayService : IDisposable
             g.DrawLine(pen, 3, 16, 12, 16);
             g.DrawLine(pen, 20, 16, 29, 16);
 
-            using var dotBrush = new SolidBrush(Color.FromArgb(255, 255, 255, 255));
+            using var dotBrush = new SolidBrush(GdiColor.FromArgb(255, 255, 255, 255));
             g.FillEllipse(dotBrush, 14, 14, 4, 4);
         }
 
