@@ -25,6 +25,12 @@ public partial class App : Application
     private OverlayWindow? _overlay;
     private SettingsWindow? _settingsWindow;
 
+    /// <summary>
+    /// Snapshot of the configuration taken when the settings window opens.
+    /// Used to undo live-preview edits if the user cancels instead of saving.
+    /// </summary>
+    private AppConfig? _settingsSnapshot;
+
     private bool _isExiting;
 
     // NOTE: no hand-written Main() here. WPF's XAML build step generates the entry
@@ -199,11 +205,15 @@ public partial class App : Application
                 return;
             }
 
+            // Remember what the overlay looked like so Cancel can restore it.
+            _settingsSnapshot = _configService.Deserialize(_configService.Serialize(_config));
+
             _settingsWindow = new SettingsWindow(_configService, _config);
 
             _settingsWindow.ConfigurationSaved += OnSettingsSaved;
+            _settingsWindow.PreviewChanged += OnSettingsPreviewChanged;
             _settingsWindow.NotificationRequested += message => ShowNotification("设置", message);
-            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+            _settingsWindow.Closed += (_, _) => OnSettingsClosed();
 
             _settingsWindow.Show();
             _settingsWindow.Activate();
@@ -214,12 +224,71 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// Applies a live edit from the settings window to the overlay immediately.
+    ///
+    /// This is what makes the on-screen crosshair respond while the user drags a
+    /// slider. The edit is applied to a copy of the running preset so that pressing
+    /// "取消" can restore the previous appearance.
+    /// </summary>
+    private void OnSettingsPreviewChanged(AppConfig working, CrosshairPreset preset)
+    {
+        if (_overlay is null || _settingsSnapshot is null)
+            return;
+
+        try
+        {
+            // Show the edited preset, but keep the overlay's LivePreset object separate
+            // from the settings window's working copy so Cancel can undo cleanly.
+            var live = preset.Clone();
+            _overlay.ApplyPreset(live);
+        }
+        catch
+        {
+            // Live preview is cosmetic; a failure must not disturb the settings dialog.
+        }
+    }
+
+    /// <summary>
+    /// Called when the settings window closes. If the user cancelled, the overlay is
+    /// restored to the configuration that was active before the window opened.
+    /// </summary>
+    private void OnSettingsClosed()
+    {
+        _settingsWindow = null;
+
+        // Nothing to restore when the save handler already adopted the new config.
+        if (_settingsSnapshot is null)
+            return;
+
+        try
+        {
+            var restore = _settingsSnapshot;
+            _settingsSnapshot = null;
+
+            var target = MonitorService.Resolve(restore.MonitorDeviceName);
+
+            if (_overlay is not null)
+            {
+                _overlay.MoveToMonitor(target);
+                _overlay.ApplyPreset(restore.GetActivePreset());
+            }
+        }
+        catch
+        {
+            // Best effort.
+        }
+    }
+
     /// <summary>Adopts a configuration saved from the settings window.</summary>
     private void OnSettingsSaved(AppConfig updated)
     {
         try
         {
             _config = updated;
+
+            // Saved: there is nothing to roll back when the window closes.
+            _settingsSnapshot = null;
 
             // Reposition in case the monitor choice changed.
             var target = MonitorService.Resolve(_config.MonitorDeviceName);
