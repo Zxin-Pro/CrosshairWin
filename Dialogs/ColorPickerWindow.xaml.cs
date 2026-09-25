@@ -128,31 +128,36 @@ public partial class ColorPickerWindow : Window
     {
         string[] presets =
         {
-            "#FFFF3B30", "#FF34C759", "#FF007AFF", "#FFFFCC00", "#FFFF9500",
-            "#FFAF52DE", "#FF00C7BE", "#FFFFFFFF", "#FF000000", "#FF8E8E93"
+            // Default crosshair red first, then a useful spread for aiming reticles.
+            "#FFFF3B30", "#FFFF9500", "#FFFFCC00", "#FF34C759", "#FF00C7BE",
+            "#FF007AFF", "#FFAF52DE", "#FFFF2D55", "#FFFFFFFF", "#FF8E8E93"
         };
+
+        var normalBorder = new SolidColorBrush(Color.FromRgb(0x34, 0x39, 0x46));
+        var hoverBorder = new SolidColorBrush(Controls.CrosshairCanvas.ParseColor("#FF4EA1FF"));
 
         foreach (string hex in presets)
         {
-            var button = new Button
+            // A Border keeps the swatch flat (no button chrome) and still clickable.
+            var swatch = new Border
             {
-                Width = 26,
-                Height = 26,
-                Margin = new Thickness(0, 0, 6, 6),
+                Width = 30,
+                Height = 30,
+                Margin = new Thickness(0, 0, 8, 8),
+                CornerRadius = new CornerRadius(6),
                 Background = new SolidColorBrush(Controls.CrosshairCanvas.ParseColor(hex)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x3F, 0x3F, 0x46)),
+                BorderBrush = normalBorder,
                 BorderThickness = new Thickness(1),
+                Cursor = System.Windows.Input.Cursors.Hand,
                 ToolTip = hex,
                 Tag = hex
             };
 
-            button.Click += (_, _) =>
-            {
-                SetColor(Controls.CrosshairCanvas.ParseColor(hex));
-                _suppress = false;
-            };
+            swatch.MouseLeftButtonUp += (_, _) => SetColor(Controls.CrosshairCanvas.ParseColor(hex));
+            swatch.MouseEnter += (_, _) => swatch.BorderBrush = hoverBorder;
+            swatch.MouseLeave += (_, _) => swatch.BorderBrush = normalBorder;
 
-            PresetPanel.Children.Add(button);
+            PresetPanel.Children.Add(swatch);
         }
     }
 
