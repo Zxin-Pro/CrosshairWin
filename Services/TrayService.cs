@@ -51,7 +51,7 @@ internal sealed class TrayService : IDisposable
     {
         _icon = new TaskbarIcon
         {
-            ToolTipText = "CrosshairWin - 屏幕准星",
+            ToolTipText = BuildTooltipText(),
             Icon = GenerateIcon()
         };
 
@@ -92,6 +92,25 @@ internal sealed class TrayService : IDisposable
         _icon.ContextMenu = menu;
 
         return _icon;
+    }
+
+    /// <summary>
+    /// Tray hover text, including the assembly version so users can identify the build.
+    /// </summary>
+    private static string BuildTooltipText()
+    {
+        try
+        {
+            var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            if (v is not null)
+                return $"CrosshairWin v{v.Major}.{v.Minor}.{v.Build}\n屏幕准星\n双击打开设置";
+        }
+        catch
+        {
+            // Fall through to the plain tooltip.
+        }
+
+        return "CrosshairWin - 屏幕准星";
     }
 
     /// <summary>Builds a themed menu item with a right-aligned, dimmed shortcut hint.</summary>
