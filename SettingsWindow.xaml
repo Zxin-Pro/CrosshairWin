@@ -614,7 +614,8 @@
                 </Border>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="CrosshairWin" FontSize="16" FontWeight="SemiBold" />
-                    <TextBlock Text="屏幕准星设置" FontSize="11.5" Foreground="{StaticResource TextMuted}" Margin="0,1,0,0" />
+                    <TextBlock x:Name="VersionText" Text="屏幕准星设置" FontSize="11.5"
+                               Foreground="{StaticResource TextMuted}" Margin="0,1,0,0" />
                 </StackPanel>
             </StackPanel>
 
