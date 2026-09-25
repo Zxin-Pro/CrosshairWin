@@ -220,7 +220,28 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
+            // Surface the failure rather than only showing a balloon tip: a silent
+            // failure here is indistinguishable from "the settings window is broken".
+            LogError("OpenSettings", ex);
             ShowNotification("设置", $"无法打开设置窗口：{ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Appends a diagnostic line to %AppData%\CrosshairWin\error.log.
+    /// Used for failures that would otherwise disappear into a tray notification.
+    /// </summary>
+    private static void LogError(string context, Exception ex)
+    {
+        try
+        {
+            AppPaths.EnsureCreated();
+            string line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {context}: {ex}{Environment.NewLine}";
+            File.AppendAllText(Path.Combine(AppPaths.Root, "error.log"), line);
+        }
+        catch
+        {
+            // Diagnostics must never throw.
         }
     }
 
