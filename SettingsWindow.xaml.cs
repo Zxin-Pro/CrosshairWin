@@ -26,11 +26,39 @@ public partial class SettingsWindow : Window
     private readonly ConfigService _configService;
     private readonly ConfigPackageService _packageService;
 
+    /// <summary>
+    /// The configuration being edited. Assigned before InitializeComponent() so that
+    /// control handlers raised during XAML load always see a valid value.
+    /// </summary>
     private AppConfig _workingConfig;
-    private CrosshairPreset? _currentPreset;
 
-    /// <summary>Guards against control-change handlers re-entering while we set values.</summary>
-    private bool _suppressEvents;
+    /// <summary>
+    /// The preset currently being edited.
+    ///
+    /// This is deliberately NON-NULLABLE and backed by <see cref="EnsureCurrentPreset"/>:
+    /// it is initialised in the constructor, so it is always bound before any control
+    /// can raise a change event. Every handler guards with "if (_currentPreset is null)"
+    /// for safety, and if this field were ever left null those guards would silently
+    /// disable the entire settings window - which is exactly the defect that made the
+    /// sliders inert. Initialising it eagerly removes that whole failure mode.
+    /// </summary>
+    private CrosshairPreset _currentPreset
+    {
+        get => _currentPresetField ??= EnsureCurrentPreset();
+        set => _currentPresetField = value;
+    }
+
+    private CrosshairPreset? _currentPresetField;
+
+    /// <summary>
+    /// Guards against control-change handlers re-entering while we set values.
+    ///
+    /// Starts TRUE: WPF raises ValueChanged while the XAML is still being loaded
+    /// (a Slider's Value attribute is applied during InitializeComponent), and at that
+    /// moment the other named controls do not exist yet. Running handlers then would
+    /// dereference null fields. The flag is cleared once loading has completed.
+    /// </summary>
+    private bool _suppressEvents = true;
 
     /// <summary>True once the window has finished its initial load.</summary>
     private bool _loaded;
@@ -58,13 +86,26 @@ public partial class SettingsWindow : Window
     /// </summary>
     internal SettingsWindow(ConfigService configService, AppConfig currentConfig)
     {
-        InitializeComponent();
-
         _configService = configService;
         _packageService = new ConfigPackageService(configService);
 
         // Work on a copy: Cancel must not mutate the running configuration.
         _workingConfig = CloneConfig(currentConfig);
+
+        // Bind the preset being edited BEFORE InitializeComponent().
+        //
+        // The XAML sets Slider.Value, which raises ValueChanged while the window is
+        // still being constructed. Those handlers reach for the current preset, so it
+        // must already be bound here; assigning it after InitializeComponent() leaves
+        // it null during construction and the handlers either no-op silently or throw.
+        _currentPresetField = _workingConfig.GetActivePreset();
+
+        // InitializeComponent must come after the fields its event handlers depend on.
+        InitializeComponent();
+
+        // The XAML is fully loaded now (every x:Name field is populated), so control
+        // change handlers can safely run from this point on.
+        _suppressEvents = false;
 
         _configService.Warning += OnConfigWarning;
 
@@ -94,23 +135,27 @@ public partial class SettingsWindow : Window
         }
 
         // RefreshPresetList selects an item while _suppressEvents is true, which makes
-        // PresetList_SelectionChanged return early. That leaves _currentPreset null and
-        // silently disables every editing control, so bind the initial preset here
-        // explicitly rather than relying on the selection event.
-        _currentPreset ??= _workingConfig.GetActivePreset();
+        // PresetList_SelectionChanged return early. Bind the initial preset explicitly
+        // here rather than relying on the selection event to do it.
+        _currentPreset = _workingConfig.GetActivePreset();
 
         LoadPresetIntoControls(_currentPreset);
         UpdatePreview();
     }
 
     /// <summary>
-    /// Ensures a preset is bound before any edit is applied. Guards against the window
-    /// being used before the initial selection has been established.
+    /// Returns the preset to edit, resolving and caching one if none is bound yet.
+    ///
+    /// Never returns null. It is reachable from control event handlers that WPF raises
+    /// during InitializeComponent(), which is why the constructor assigns the preset
+    /// before loading the XAML.
     /// </summary>
     private CrosshairPreset EnsureCurrentPreset()
     {
-        _currentPreset ??= _workingConfig.GetActivePreset();
-        return _currentPreset;
+        var resolved = _workingConfig.GetActivePreset();
+
+        _currentPresetField = resolved;
+        return resolved;
     }
 
     private void SettingsWindow_Closed(object? sender, EventArgs e)
@@ -293,9 +338,22 @@ public partial class SettingsWindow : Window
         TintColorBox.IsEnabled = isImage;
     }
 
-    /// <summary>Refreshes every numeric read-out next to a slider.</summary>
+    /// <summary>
+    /// Refreshes every numeric read-out next to a slider.
+    ///
+    /// Bails out while the XAML is still loading: the named TextBlocks are created by
+    /// InitializeComponent, and a Slider's Value attribute raises ValueChanged before
+    /// they exist.
+    /// </summary>
     private void UpdateValueLabels()
     {
+        if (_suppressEvents || IsLoaded == false && !_loaded)
+            return;
+
+        // Defensive: a control that is somehow missing must not take the window down.
+        if (OpacityText is null || SizeSlider is null)
+            return;
+
         OpacityText.Text = $"{OpacitySlider.Value * 100:0}%";
         SizeText.Text = $"{SizeSlider.Value:0}";
         ThicknessText.Text = $"{ThicknessSlider.Value:0}";
@@ -965,10 +1023,11 @@ public partial class SettingsWindow : Window
         if (!stillUsed)
             ImageImportService.DeleteManagedImage(image);
 
-        _currentPreset = _workingConfig.Presets.FirstOrDefault();
-        _workingConfig.ActivePresetId = _currentPreset?.Id ?? string.Empty;
+        // GetActivePreset() self-repairs an empty preset list, so this is never null.
+        _currentPreset = _workingConfig.GetActivePreset();
+        _workingConfig.ActivePresetId = _currentPreset.Id;
 
-        RefreshPresetList(_currentPreset?.Id);
+        RefreshPresetList(_currentPreset.Id);
 
         if (_currentPreset is not null)
             LoadPresetIntoControls(_currentPreset);
@@ -1112,7 +1171,7 @@ public partial class SettingsWindow : Window
             return;
 
         _workingConfig = AppConfig.CreateDefault();
-        _currentPreset = _workingConfig.Presets.FirstOrDefault();
+        _currentPreset = _workingConfig.GetActivePreset();
 
         _suppressEvents = true;
         try
@@ -1177,9 +1236,9 @@ public partial class SettingsWindow : Window
         }
 
         _workingConfig = result.Config;
-        _currentPreset = _workingConfig.Presets.FirstOrDefault();
+        _currentPreset = _workingConfig.GetActivePreset();
 
-        RefreshPresetList(_currentPreset?.Id);
+        RefreshPresetList(_currentPreset.Id);
 
         _suppressEvents = true;
         try
