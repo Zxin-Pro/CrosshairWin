@@ -25,10 +25,13 @@
 
     <ApplicationManifest>app.manifest</ApplicationManifest>
 
-    <Version>1.0.0</Version>
+    <Version>2.0.0</Version>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <FileVersion>2.0.0.0</FileVersion>
     <AssemblyTitle>CrosshairWin</AssemblyTitle>
     <Product>CrosshairWin</Product>
     <Company>CrosshairWin</Company>
+    <Copyright>MIT Licensed</Copyright>
     <Description>Transparent, click-through screen crosshair overlay for Windows 10/11.</Description>
 
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
