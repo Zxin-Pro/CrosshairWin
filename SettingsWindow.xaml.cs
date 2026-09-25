@@ -121,6 +121,19 @@ public partial class SettingsWindow : Window
     {
         _loaded = true;
 
+        // Show the real assembly version so users can tell builds apart.
+        try
+        {
+            var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            VersionText.Text = version is null
+                ? "屏幕准星设置"
+                : $"屏幕准星设置  ·  v{version.Major}.{version.Minor}.{version.Build}";
+        }
+        catch
+        {
+            // Version display is cosmetic.
+        }
+
         _suppressEvents = true;
 
         try
