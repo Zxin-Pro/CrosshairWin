@@ -194,10 +194,89 @@ internal sealed class TrayService : IDisposable
     }
 
     /// <summary>
-    /// Draws a small crosshair icon into an <see cref="Icon"/>.
-    /// Uses System.Drawing only, so no external asset is required.
+    /// Returns the tray icon.
+    ///
+    /// Prefers the multi-resolution icon embedded in the executable (the same
+    /// artwork Explorer and the taskbar show, with a purpose-drawn 16/20/24px
+    /// frame). Falls back to a runtime-drawn crosshair if the resource cannot be
+    /// loaded, so the tray entry can never end up blank.
     /// </summary>
     private Icon GenerateIcon()
+    {
+        _generatedIcon = LoadEmbeddedIcon() ?? DrawFallbackIcon();
+        return _generatedIcon;
+    }
+
+    /// <summary>
+    /// Loads the app icon from the running executable's resources.
+    /// The requested small size selects the sharpest matching frame for the tray.
+    /// </summary>
+    private static Icon? LoadEmbeddedIcon()
+    {
+        try
+        {
+            string? exe = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(exe))
+                return null;
+
+            // Ask for the small-icon size so Windows picks the 16/20px frame rather
+            // than downscaling the 256px one.
+            var icon = ExtractIcon(exe, 16);
+
+            if (icon is null)
+                return null;
+
+            // Clone so the icon owns its own data and survives the original handle.
+            var copy = (Icon)icon.Clone();
+            icon.Dispose();
+            return copy;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint ExtractIconEx(
+        string lpszFile, int nIconIndex, IntPtr[]? phiconLarge, IntPtr[]? phiconSmall, uint nIcons);
+
+    /// <summary>Pulls a specific size of the icon out of an executable's resources.</summary>
+    private static Icon? ExtractIcon(string path, int size)
+    {
+        try
+        {
+            var small = new IntPtr[1];
+            var large = new IntPtr[1];
+
+            // 1 icon in the file; the small handle is the 16px variant.
+            uint extracted = ExtractIconEx(path, 0, large, small, 1);
+
+            IntPtr handle = size <= 16 ? small[0] : large[0];
+
+            if (extracted == 0 || handle == IntPtr.Zero)
+                return null;
+
+            var icon = Icon.FromHandle(handle);
+            var clone = (Icon)icon.Clone();
+
+            // The handles returned by ExtractIconEx must be destroyed by the caller.
+            if (small[0] != IntPtr.Zero) DestroyIcon(small[0]);
+            if (large[0] != IntPtr.Zero && large[0] != small[0]) DestroyIcon(large[0]);
+
+            return clone;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Emergency fallback: draws a simple crosshair so the tray always shows something.
+    /// Only used if the embedded icon cannot be read.
+    /// </summary>
+    private static Icon DrawFallbackIcon()
     {
         const int size = 32;
 
@@ -207,36 +286,32 @@ internal sealed class TrayService : IDisposable
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(GdiColor.Transparent);
 
-            using var pen = new GdiPen(GdiColor.FromArgb(255, 255, 59, 48), 3f)
+            using var pen = new GdiPen(GdiColor.FromArgb(255, 0x4E, 0xA1, 0xFF), 4f)
             {
                 StartCap = LineCap.Round,
                 EndCap = LineCap.Round
             };
 
-            // Cross with a central gap, matching the app's default crosshair.
             g.DrawLine(pen, 16, 3, 16, 12);
             g.DrawLine(pen, 16, 20, 16, 29);
             g.DrawLine(pen, 3, 16, 12, 16);
             g.DrawLine(pen, 20, 16, 29, 16);
 
-            using var dotBrush = new SolidBrush(GdiColor.FromArgb(255, 255, 255, 255));
+            using var dotBrush = new SolidBrush(GdiColor.FromArgb(255, 0x8C, 0xC5, 0xFF));
             g.FillEllipse(dotBrush, 14, 14, 4, 4);
         }
 
-        // Icon.FromHandle does not own the handle, so we clone into a managed Icon
-        // and destroy the temporary HICON to avoid a GDI leak.
+        // Icon.FromHandle does not own the handle, so clone then destroy it.
         IntPtr handle = bitmap.GetHicon();
         try
         {
             using var temp = Icon.FromHandle(handle);
-            _generatedIcon = (Icon)temp.Clone();
+            return (Icon)temp.Clone();
         }
         finally
         {
             DestroyIcon(handle);
         }
-
-        return _generatedIcon;
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]

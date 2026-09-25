@@ -18,6 +18,7 @@
         mc:Ignorable="d"
         d:DesignWidth="1000" d:DesignHeight="720"
         Title="CrosshairWin 设置"
+        Icon="Assets/app.ico"
         Width="1000" Height="720"
         MinWidth="880" MinHeight="620"
         WindowStartupLocation="CenterScreen"
