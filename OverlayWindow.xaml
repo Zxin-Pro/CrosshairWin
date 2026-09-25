@@ -1,0 +1,33 @@
+<Window x:Class="CrosshairWin.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:CrosshairWin.Controls"
+        Title="CrosshairWin Overlay"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        ShowActivated="False"
+        Focusable="False"
+        IsHitTestVisible="False"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True"
+        SizeToContent="Manual"
+        mc:Ignorable="d"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        d:DesignHeight="200" d:DesignWidth="200">
+
+    <!--
+        The crosshair is centred inside this window. The window itself is sized to a
+        bounded region around the monitor centre rather than the entire screen, which
+        keeps composition cheap and avoids covering the whole desktop with a layered
+        surface (a known source of flicker on some Win10 GPU drivers).
+    -->
+    <Grid Background="Transparent">
+        <controls:CrosshairCanvas x:Name="Crosshair" />
+    </Grid>
+</Window>

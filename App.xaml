@@ -1,0 +1,21 @@
+<Application x:Class="CrosshairWin.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <!--
+        ShutdownMode is OnExplicitShutdown on purpose: the overlay window is hidden
+        (not closed) when the user toggles visibility, and closing the settings window
+        must not terminate the app. Exit is driven explicitly by the tray menu/hotkey.
+    -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <!-- Shared dark palette so the dialogs and settings window stay consistent. -->
+            <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#FF1E1E1E" />
+            <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#FF252526" />
+            <SolidColorBrush x:Key="TextBrush" Color="#FFE8E8E8" />
+            <SolidColorBrush x:Key="SubtleTextBrush" Color="#FFB0B0B0" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#FF9CDCFE" />
+            <SolidColorBrush x:Key="PanelBorderBrush" Color="#FF3F3F46" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
