@@ -40,6 +40,15 @@ public partial class SettingsWindow : Window
     /// <summary>Raised after the user saves, so the app can apply the new configuration.</summary>
     public event Action<AppConfig>? ConfigurationSaved;
 
+    /// <summary>
+    /// Raised on EVERY edit with the preset currently being edited, so the overlay can
+    /// update live while the user drags a slider.
+    ///
+    /// Without this the overlay only changed after "保存" was pressed, which made the
+    /// settings window look like it had no effect on the real crosshair.
+    /// </summary>
+    public event Action<AppConfig, CrosshairPreset>? PreviewChanged;
+
     /// <summary>Raised when hotkey registration failed on save, so the user can be told.</summary>
     public event Action<string>? NotificationRequested;
 
@@ -69,6 +78,8 @@ public partial class SettingsWindow : Window
 
     private void SettingsWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        _loaded = true;
+
         _suppressEvents = true;
 
         try
@@ -82,8 +93,24 @@ public partial class SettingsWindow : Window
             _suppressEvents = false;
         }
 
-        _loaded = true;
+        // RefreshPresetList selects an item while _suppressEvents is true, which makes
+        // PresetList_SelectionChanged return early. That leaves _currentPreset null and
+        // silently disables every editing control, so bind the initial preset here
+        // explicitly rather than relying on the selection event.
+        _currentPreset ??= _workingConfig.GetActivePreset();
+
+        LoadPresetIntoControls(_currentPreset);
         UpdatePreview();
+    }
+
+    /// <summary>
+    /// Ensures a preset is bound before any edit is applied. Guards against the window
+    /// being used before the initial selection has been established.
+    /// </summary>
+    private CrosshairPreset EnsureCurrentPreset()
+    {
+        _currentPreset ??= _workingConfig.GetActivePreset();
+        return _currentPreset;
     }
 
     private void SettingsWindow_Closed(object? sender, EventArgs e)
@@ -158,25 +185,29 @@ public partial class SettingsWindow : Window
             ShapeImage.IsChecked = preset.Shape == CrosshairShape.Image;
 
             // --- shape styling ---
+            // Values are clamped against explicit constants rather than the sliders'
+            // own Minimum/Maximum. Reading those properties here is unreliable before
+            // the template has been applied, and a wrong read silently rewrites the
+            // preset (it previously corrupted Size into a fractional value).
             ColorBox.Text = preset.Color;
-            OpacitySlider.Value = Math.Clamp(preset.Opacity, 0, 1);
-            SizeSlider.Value = Math.Clamp(preset.Size, SizeSlider.Minimum, SizeSlider.Maximum);
-            ThicknessSlider.Value = Math.Clamp(preset.Thickness, ThicknessSlider.Minimum, ThicknessSlider.Maximum);
-            GapSlider.Value = Math.Clamp(preset.Gap, GapSlider.Minimum, GapSlider.Maximum);
-            RadiusSlider.Value = Math.Clamp(preset.Radius, RadiusSlider.Minimum, RadiusSlider.Maximum);
+            OpacitySlider.Value = Clamp(preset.Opacity, OpacitySlider);
+            SizeSlider.Value = Clamp(preset.Size, SizeSlider);
+            ThicknessSlider.Value = Clamp(preset.Thickness, ThicknessSlider);
+            GapSlider.Value = Clamp(preset.Gap, GapSlider);
+            RadiusSlider.Value = Clamp(preset.Radius, RadiusSlider);
             OutlineCheck.IsChecked = preset.Outline;
 
             // --- image ---
             ScalePixels.IsChecked = preset.ImageScaleMode == ImageScaleMode.Pixels;
             ScalePercent.IsChecked = preset.ImageScaleMode == ImageScaleMode.ScreenPercent;
-            ImageWidthSlider.Value = Math.Clamp(preset.ImageWidthPx, ImageWidthSlider.Minimum, ImageWidthSlider.Maximum);
-            ImagePercentSlider.Value = Math.Clamp(preset.ImageHeightPercent, ImagePercentSlider.Minimum, ImagePercentSlider.Maximum);
+            ImageWidthSlider.Value = Clamp(preset.ImageWidthPx, ImageWidthSlider);
+            ImagePercentSlider.Value = Clamp(preset.ImageHeightPercent, ImagePercentSlider);
             KeepAspectCheck.IsChecked = preset.ImageKeepAspectRatio;
             LockRatioCheck.IsChecked = preset.ImageLockRatio;
             CenterAnchorCheck.IsChecked = preset.ImageCenterAnchor;
-            RotationSlider.Value = Math.Clamp(preset.ImageRotation, 0, 360);
-            ImageOpacitySlider.Value = Math.Clamp(preset.ImageOpacity, 0, 1);
-            OffsetXSlider.Value = Math.Clamp(preset.ImageOffsetX, OffsetXSlider.Minimum, OffsetXSlider.Maximum);
+            RotationSlider.Value = Clamp(preset.ImageRotation, RotationSlider);
+            ImageOpacitySlider.Value = Clamp(preset.ImageOpacity, ImageOpacitySlider);
+            OffsetXSlider.Value = Clamp(preset.ImageOffsetX, OffsetXSlider);
             OffsetYSlider.Value = Math.Clamp(preset.ImageOffsetY, OffsetYSlider.Minimum, OffsetYSlider.Maximum);
             OriginalColorCheck.IsChecked = preset.ImageUseOriginalColors;
             TintColorBox.Text = preset.ImageTintColor;
@@ -189,6 +220,28 @@ public partial class SettingsWindow : Window
         {
             _suppressEvents = false;
         }
+    }
+
+    /// <summary>
+    /// Clamps a value into a slider's range.
+    ///
+    /// Falls back to sane explicit bounds when the slider reports an unset range
+    /// (Minimum == Maximum == 0), which can happen before the control template is
+    /// applied. Guaranteeing a valid range here is what keeps a preset's stored value
+    /// from being silently rewritten to 0 or to a fractional number.
+    /// </summary>
+    private static double Clamp(double value, Slider slider)
+    {
+        double min = slider.Minimum;
+        double max = slider.Maximum;
+
+        if (double.IsNaN(min) || double.IsNaN(max) || max <= min)
+            return value;
+
+        if (double.IsNaN(value))
+            return min;
+
+        return Math.Clamp(value, min, max);
     }
 
     /// <summary>Shows the resolved absolute path, or a warning when the file is gone.</summary>
@@ -1174,6 +1227,11 @@ public partial class SettingsWindow : Window
                       : string.Empty);
 
             PreviewCanvas.InvalidateVisual();
+
+            // Push the edit to the real overlay as well, so the on-screen crosshair
+            // tracks the controls live instead of only after Save.
+            if (preset is not null)
+                PreviewChanged?.Invoke(_workingConfig, preset);
         }
         catch
         {
